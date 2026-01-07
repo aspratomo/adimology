@@ -24,13 +24,13 @@ export interface BrokerDetector {
   top3: BrokerTopStat;
   top5: BrokerTopStat;
   avg: BrokerTopStat;
-  total_buyer: number | { volume: string; value: string; frequency: number };
-  total_seller: number | { volume: string; value: string; frequency: number };
-  number_broker_buysell: number | { buyer: number; seller: number };
-  broker_accdist: string | any[];
-  volume: number | { net_foreign: string; net_local: string; total: string };
-  value: number | { net_foreign: string; net_local: string; total: string };
-  average: number | { foreign: string; local: string; total: string };
+  total_buyer: number;
+  total_seller: number;
+  number_broker_buysell: number;
+  broker_accdist: string;
+  volume: number;
+  value: number;
+  average: number;
 }
 
 export interface BrokerBuyItem {
