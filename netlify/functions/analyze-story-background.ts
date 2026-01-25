@@ -1,30 +1,12 @@
-import {
-  updateAgentStory,
-  createBackgroundJobLog,
-  appendBackgroundJobLogEntry,
-  updateBackgroundJobLog
+import { 
+  updateAgentStory, 
+  createBackgroundJobLog, 
+  appendBackgroundJobLogEntry, 
+  updateBackgroundJobLog 
 } from '../../lib/supabase';
 import { GoogleGenAI, ThinkingLevel } from '@google/genai';
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-
-// Interface for grounding metadata from Google Search
-interface GroundingChunk {
-  web?: {
-    uri: string;
-    title: string;
-  };
-}
-
-interface GroundingMetadata {
-  groundingChunks?: GroundingChunk[];
-  webSearchQueries?: string[];
-}
-
-interface SourceCitation {
-  title: string;
-  uri: string;
-}
 
 export default async (req: Request) => {
   const startTime = Date.now();
@@ -69,14 +51,14 @@ export default async (req: Request) => {
         status: 'error',
         error_message: errMsg
       });
-
+      
       if (jobLogId) {
         await updateBackgroundJobLog(jobLogId, {
           status: 'failed',
           error_message: errMsg,
         });
       }
-
+      
       return new Response(JSON.stringify({ error: 'API key not configured' }), { status: 500 });
     }
 
@@ -95,15 +77,7 @@ export default async (req: Request) => {
       apiKey: GEMINI_API_KEY,
     });
 
-    // Google Search tool for grounding citations
-    const googleSearchTool = {
-      googleSearch: {},
-    };
-
-    // Config with tools and (optionally) Thinking logic
-    // Using gemini-3-flash-preview which supports both
     const config = {
-      tools: [googleSearchTool],
       thinkingConfig: {
         thinkingLevel: ThinkingLevel.HIGH,
       },
@@ -112,34 +86,33 @@ export default async (req: Request) => {
     const today = new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
     const model = 'gemini-3-flash-preview';
     const systemPrompt = "Kamu adalah seorang analis saham profesional Indonesia yang ahli dalam menganalisa story dan katalis pergerakan harga saham.";
-
+    
     let keyStatsContext = '';
     if (keyStatsData) {
       keyStatsContext = `\nDATA KEY STATISTICS UNTUK ${emiten}:\n` + JSON.stringify(keyStatsData, null, 2) + '\n';
     }
 
-    // Grounding will automatically provide citations for findings
     const userPrompt = `Hari ini adalah ${today}.
-Cari dan analisa berita-berita TERBARU (1-2 minggu terakhir) tentang emiten saham Indonesia dengan kode ${emiten} dari internet menggunakan Google Search. 
-
+Cari dan analisa berita-berita TERBARU (bulan ini/minggu ini) tentang emiten saham Indonesia dengan kode ${emiten} dari internet menggunakan Google Search. 
+${keyStatsContext}
 FOKUS ANALISA:
-1. Fokus sepenuhnya pada STORY BISNIS, AKSI KORPORASI, KATALIS fundamental, SENTIMEN PASAR, dan berita-berita TERBARU (1-2 minggu terakhir) baik yang positif maupun negatif.
+1. Fokus sepenuhnya pada STORY BISNIS, AKSI KORPORASI, dan KATALIS fundamental/sentimen.
 2. ABAIKAN data harga saham (price action) karena data harga dari internet seringkali tidak akurat atau delay. Jangan menyebutkan angka harga saham spesifik dalam analisis.
 3. Hubungkan berita yang ditemukan dengan logika pasar: mengapa berita ini bagus atau buruk untuk masa depan perusahaan?
 4. Sebutkan tanggal rilis berita yang kamu gunakan sebagai referensi di dalam deskripsi katalis.
-5. Terjemahkan data Key Statistics (${keyStatsContext}) ke dalam bahasa yang mudah dipahami tapi detail untuk trading & investasi. Berikan kesimpulan apakah data tersebut memberikan signal 'Positif/Sehat', 'Neutral', atau 'Negatif/Hati-hati' untuk trading/investasi jangka pendek dan panjang.
+5. Terjemahkan data Key Statistics (pahami data di atas jika tersedia) ke dalam bahasa yang mudah dipahami tapi detail untuk investasi. Berikan kesimpulan apakah data tersebut memberikan signal 'Positif/Sehat', 'Neutral', atau 'Negatif/Hati-hati' untuk investasi jangka pendek dan panjang.
 
 Berikan analisis dalam format JSON dengan struktur berikut (PASTIKAN HANYA OUTPUT JSON, tanpa markdown code block agar mudah di-parse):
 {
   "matriks_story": [
     {
-      "kategori_story": "Transformasi Bisnis | Aksi Korporasi | Pemulihan Fundamental | Kondisi Makro | Sentimen Pasar",
+      "kategori_story": "Transformasi Bisnis | Aksi Korporasi | Pemulihan Fundamental | Kondisi Makro",
       "deskripsi_katalis": "deskripsi singkat katalis",
       "logika_ekonomi_pasar": "penjelasan logika ekonomi/pasar",
       "potensi_dampak_harga": "dampak terhadap harga saham negatif/netral/positif dan alasan"
     }
   ],
-  "swat_analysis": {
+  "swot_analysis": {
     "strengths": ["kekuatan perusahaan"],
     "weaknesses": ["kelemahan perusahaan"],
     "opportunities": ["peluang pasar"],
@@ -163,68 +136,41 @@ Berikan analisis dalam format JSON dengan struktur berikut (PASTIKAN HANYA OUTPU
   "kesimpulan": "kesimpulan analisis dalam 2-3 kalimat"
 }`;
 
-    // Execute generateContent with retry/fallback
-    let response;
-    let usedSearch = true;
+    const contents = [
+      {
+        role: 'user',
+        parts: [
+          {
+            text: `${systemPrompt}\n\n${userPrompt}`,
+          },
+        ],
+      },
+    ];
 
-    try {
-      console.log(`[Agent Story] Attempting analysis with Gemini Search Grounding...`);
-      response = await ai.models.generateContent({
-        model,
-        contents: `${systemPrompt}\n\n${userPrompt}`,
-        config,
-      });
-    } catch (aiError: any) {
-      // Check for 429 (Quota) error
-      const isQuotaError = JSON.stringify(aiError).includes('429') ||
-        aiError.message?.includes('429') ||
-        aiError.message?.includes('RESOURCE_EXHAUSTED');
+    const tools = [
+      {
+        googleSearch: {},
+      },
+    ] as any;
 
-      if (isQuotaError) {
-        console.warn('[Agent Story] Quota exceeded for Search Grounding. Retrying WITHOUT search tools...');
-        if (jobLogId) {
-          await appendBackgroundJobLogEntry(jobLogId, {
-            level: 'warn',
-            message: `Search Grounding quota exceeded. Falling back to internal AI knowledge...`,
-            emiten,
-          });
-        }
+    const responseStream = await (ai.models as any).generateContentStream({
+      model,
+      config,
+      contents,
+      tools,
+    });
 
-        // Fallback: Try without search tools and without thinking (to be safe/fast)
-        usedSearch = false;
-        response = await ai.models.generateContent({
-          model,
-          contents: `${systemPrompt}\n\n${userPrompt}`,
-          // No tools or thinking config in fallback
-        });
-      } else {
-        // Not a quota error, rethrow
-        throw aiError;
+    let fullText = '';
+    for await (const chunk of responseStream) {
+      if (chunk.text) {
+        fullText += chunk.text;
       }
     }
-
-    // Extract text from response
-    const fullText = response.text || '';
-
-    // Extract grounding chunks from response
-    const groundingMetadata = response.candidates?.[0]?.groundingMetadata || (response as any).groundingMetadata || {};
-    const groundingChunks = groundingMetadata.groundingChunks || [];
-
-    // Process results into valid citations
-    const sources: SourceCitation[] = groundingChunks
-      .filter((chunk: GroundingChunk) => chunk.web?.uri)
-      .map((chunk: GroundingChunk) => ({
-        title: chunk.web?.title || 'Sumber Berita',
-        uri: chunk.web?.uri || ''
-      }))
-      .filter((source: SourceCitation) => source.uri.length > 0);
-
-    console.log(`[Agent Story] Analysis success. Search Grounding used: ${usedSearch}. Sources found: ${sources.length}`);
 
     if (jobLogId) {
       await appendBackgroundJobLogEntry(jobLogId, {
         level: 'info',
-        message: `Gemini response received, parsing results... (${sources.length} sources found)`,
+        message: `Gemini response received, parsing results...`,
         emiten,
       });
     }
@@ -241,7 +187,7 @@ Berikan analisis dalam format JSON dengan struktur berikut (PASTIKAN HANYA OUTPU
     } catch (parseError) {
       const errMsg = 'Failed to parse AI response';
       console.error('[Agent Story] Parse error:', parseError);
-
+      
       await updateAgentStory(parseInt(storyId), {
         status: 'error',
         error_message: errMsg
@@ -263,7 +209,7 @@ Berikan analisis dalam format JSON dengan struktur berikut (PASTIKAN HANYA OUTPU
       return new Response(JSON.stringify({ error: 'Parse error' }), { status: 500 });
     }
 
-    // Save successful result with sources
+    // Save successful result
     await updateAgentStory(parseInt(storyId), {
       status: 'completed',
       matriks_story: analysisResult.matriks_story || [],
@@ -271,8 +217,7 @@ Berikan analisis dalam format JSON dengan struktur berikut (PASTIKAN HANYA OUTPU
       checklist_katalis: analysisResult.checklist_katalis || [],
       keystat_signal: analysisResult.keystat_signal || '',
       strategi_trading: analysisResult.strategi_trading || {},
-      kesimpulan: analysisResult.kesimpulan || '',
-      sources: sources // Add grounding sources
+      kesimpulan: analysisResult.kesimpulan || ''
     });
 
     const duration = (Date.now() - startTime) / 1000;
@@ -283,12 +228,12 @@ Berikan analisis dalam format JSON dengan struktur berikut (PASTIKAN HANYA OUTPU
         level: 'info',
         message: `Analysis completed successfully`,
         emiten,
-        details: { duration_seconds: duration, sources_count: sources.length }
+        details: { duration_seconds: duration }
       });
       await updateBackgroundJobLog(jobLogId, {
         status: 'completed',
         success_count: 1,
-        metadata: { duration_seconds: duration, sources_count: sources.length }
+        metadata: { duration_seconds: duration }
       });
     }
 
@@ -297,7 +242,7 @@ Berikan analisis dalam format JSON dengan struktur berikut (PASTIKAN HANYA OUTPU
   } catch (error) {
     const errMsg = String(error);
     console.error('[Agent Story] Critical error:', error);
-
+    
     if (jobLogId) {
       await appendBackgroundJobLogEntry(jobLogId, {
         level: 'error',
