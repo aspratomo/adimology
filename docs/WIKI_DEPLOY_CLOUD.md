@@ -84,6 +84,6 @@ Agar migrasi otomatis dapat berjalan, Anda perlu menyiapkan infrastruktur pelaca
 
 ## A5. Checkpoint Troubleshooting Koneksi
 
-Jika status di aplikasi masih **"Disconnected"** atau Token invalid, silakan lakukan [pemeriksaan poin-poin berikut](CHECKPOINT.md).
+Jika status di aplikasi masih **"Disconnected"** atau Token invalid, silakan lakukan [pemeriksaan poin-poin berikut](https://github.com/bhaktiutama/adimology/wiki/Checkpoint).
 
    

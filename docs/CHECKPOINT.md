@@ -23,11 +23,11 @@ Pastikan tabel sudah terbentuk di dashboard Supabase (Menu **Table Editor**):
   - `stockbit_tokens`
   - `watchlist`
   - `watchlist_history`
-- Jika tabel tidak ada, ulangi langkah **A1 No. 14** (Jalankan script `000_init.sql` di SQL Editor).
+- Jika tabel tidak ada, ulangi langkah **A1 No. 4** (Jalankan script `000_init.sql` di SQL Editor).
 ![Supabase Setup](https://raw.githubusercontent.com/bhaktiutama/adimology/main/public/checkpoint01.png)
 
 ## 3. Environment Variables (Netlify)
-Pastikan di dashboard Netlify (**Site configuration > Environment variables**) variabel berikut sudah benar dan tidak ada typo:
+Pastikan di dashboard Netlify (**Project configuration > Environment variables**) variabel berikut sudah benar dan tidak ada typo:
 ![Supabase Setup](https://raw.githubusercontent.com/bhaktiutama/adimology/main/public/checkpoint02.png)
 
 | Key | Catatan |
